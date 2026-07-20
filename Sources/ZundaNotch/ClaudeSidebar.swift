@@ -6,11 +6,17 @@ import ApplicationServices
 enum ClaudeSidebar {
 
     // アプリ前面化の直後に呼ぶ。少し待ってからサイドバーを走査してクリックする。
+    // 権限プロンプトはアプリ起動中に一度だけ出す（クリックのたびに出さない）
+    private static var didPromptForAX = false
+
     @MainActor
     static func openSession(titled title: String) {
         guard AXIsProcessTrusted() else {
             NSLog("ClaudeSidebar: アクセシビリティ権限が無いのだ（システム設定 > プライバシー > アクセシビリティ で許可）")
-            requestAccessibilityIfNeeded()
+            if !didPromptForAX {
+                didPromptForAX = true
+                requestAccessibilityIfNeeded()
+            }
             return
         }
         guard let pid = claudePID() else { return }

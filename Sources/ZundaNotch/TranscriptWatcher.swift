@@ -6,6 +6,7 @@ import Foundation
 final class TranscriptWatcher {
     private let store: SessionStore
     private var timer: Timer?
+    private var fsWatcher: DirectoryWatcher?
     private var scanning = false
 
     init(store: SessionStore) {
@@ -14,7 +15,17 @@ final class TranscriptWatcher {
 
     func start() {
         tick()
-        timer = Timer.scheduledTimer(withTimeInterval: 12, repeats: true) { [weak self] _ in
+        // 即時反応：transcript の書き込みを FSEvents で検知したら即スキャン（本家並みの速さ）
+        let watchPaths = [
+            NSHomeDirectory() + "/.claude/projects",
+            NSHomeDirectory() + "/Library/Application Support/Claude/claude-code-sessions",
+        ]
+        fsWatcher = DirectoryWatcher(paths: watchPaths) { [weak self] in
+            Task { @MainActor in self?.tick() }
+        }
+        fsWatcher?.start()
+        // 保険：FSEvents が取りこぼしても定期スキャンで拾う（間隔は長めでよい）
+        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
     }
