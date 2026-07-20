@@ -15,7 +15,7 @@ final class ApprovalCenter: ObservableObject {
     @Published var pending: [String: Pending] = [:]
 
     static let allowJSON = #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#
-    static let denyJSON = #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"},"systemMessage":"ずんだノッチで拒否されたのだ"}}"#
+    static let denyJSON = #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"},"systemMessage":"ずんだノッチで拒否されました"}}"#
 
     // 保留の自動解放秒数。応答なしなら空応答→ターミナル側の通常確認にフォールバック
     static let autoReleaseSeconds: Double = 120

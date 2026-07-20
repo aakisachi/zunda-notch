@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 
-// 歯車から開く設定ウィンドウ（本家の設定画面のコンパクト版）
+// 歯車から開く設定ウィンドウ
 @MainActor
 final class SettingsWindowController {
     private var window: NSWindow?
@@ -16,9 +16,12 @@ final class SettingsWindowController {
         let view = SettingsView()
         let hosting = NSHostingController(rootView: view)
         let w = NSWindow(contentViewController: hosting)
-        w.title = "ずんだノッチ 設定"
-        w.styleMask = [.titled, .closable]
-        w.setContentSize(NSSize(width: 440, height: 640))
+        w.title = "ずんだノッチ設定"
+        w.styleMask = [.titled, .closable, .fullSizeContentView]
+        w.titlebarAppearsTransparent = true
+        w.titleVisibility = .hidden
+        w.isMovableByWindowBackground = true
+        w.setContentSize(NSSize(width: 460, height: 700))
         w.center()
         w.isReleasedWhenClosed = false
         window = w
@@ -35,7 +38,7 @@ struct SettingsView: View {
     @AppStorage("silentHoursEnabled") private var silentHours = false
     @AppStorage("claudeBudget5hM") private var claudeBudget5hM = 15
     @AppStorage("claudeBudget7dM") private var claudeBudget7dM = 500
-    @AppStorage("showUsageStrip") private var showUsageStrip = true
+    @AppStorage("showUsageStrip") private var showUsageStrip = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginItemError = ""
     @State private var tokenInput = ""
@@ -43,160 +46,217 @@ struct SettingsView: View {
     @ObservedObject private var usage = UsageMonitor.shared
 
     var body: some View {
-        Form {
-            Section("通知") {
-                Toggle("ずんだもん音声", isOn: $zundaVoice)
-                Text("完了「できたのだ！」承認待ち「許可がほしいのだ！」と喋るのだ")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("サウンドエフェクト", isOn: $soundEffects)
-                Text("音声OFFのときに短い効果音で知らせるのだ")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("通知でパネルを自動展開", isOn: $autoExpand)
-                Text("OFFにするとパネルは閉じたまま、ノッチが控えめに光るのだ。承認は引き続き自動で展開するのだ")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+        VStack(spacing: 0) {
+            header
+            Form {
+                Section {
+                    Toggle("ずんだもん音声", isOn: $zundaVoice)
+                    caption("完了時に「できたのだ！」、承認待ちに「許可がほしいのだ！」と読み上げます。")
+                    Toggle("サウンドエフェクト", isOn: $soundEffects)
+                    caption("音声がオフのときは、短い効果音でお知らせします。")
+                    Toggle("通知でパネルを自動展開", isOn: $autoExpand)
+                    caption("オフにするとパネルは閉じたまま、ノッチがそっと光ります。承認だけは自動で展開します。")
+                } header: { sectionHeader("通知", "bell.badge.fill") }
 
-            Section("使用量ゲージ") {
-                Toggle("ノッチに使用量ゲージを表示", isOn: $showUsageStrip)
-                Text("OFFにするとノッチの Claude/Codex 使用率バーを隠すのだ（この設定画面の数値は残る）")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let s = usage.stats {
-                    if let p5 = s.claudeOfficial5hPct {
-                        LabeledContent("Claude 5時間枠（公式）") {
-                            Text("\(p5)%・残 \(UsageFormat.remain(s.claudeOfficial5hReset))")
+                Section {
+                    Toggle(isOn: $showUsageStrip) {
+                        HStack(spacing: 6) {
+                            Text("ノッチに使用量ゲージを表示")
+                            betaBadge
                         }
+                    }
+                    caption("Claude / Codex の使用率バーをノッチに表示します。実験的な機能のため、初期状態ではオフになっています。")
+                    if let s = usage.stats {
+                        usageRows(s)
+                        caption("最終更新：\(s.fetchedAt.formatted(date: .omitted, time: .shortened))")
                     } else {
-                        LabeledContent("Claude 5時間枠") {
-                            Text("\(TokenFormat.short(s.claude5hTokens)) tok 使用")
-                        }
+                        caption("集計中…")
                     }
-                    if let p7 = s.claudeOfficial7dPct {
-                        LabeledContent("Claude 7日枠（公式）") {
-                            Text("\(p7)%・残 \(UsageFormat.remain(s.claudeOfficial7dReset))")
-                        }
-                    } else {
-                        LabeledContent("Claude 7日枠") {
-                            Text("\(TokenFormat.short(s.claude7dTokens)) tok 使用")
-                        }
-                    }
-                    if let pct = s.codex7dPct {
-                        LabeledContent("Codex 7日枠（公式）") {
-                            Text("\(pct)%・残 \(UsageFormat.remain(s.codex7dReset))")
-                        }
-                    }
-                    if let pct = s.codex5hPct {
-                        LabeledContent("Codex 5時間枠（公式）") {
-                            Text("\(pct)%・残 \(UsageFormat.remain(s.codex5hReset))")
-                        }
-                    }
-                    Text("最終更新: \(s.fetchedAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("集計中…").font(.caption).foregroundStyle(.secondary)
-                }
-                Button("いますぐ更新") { usage.refresh() }
-            }
+                    Button("いますぐ更新") { usage.refresh() }
+                } header: { sectionHeader("使用量ゲージ", "gauge.with.dots.needle.bottom.50percent") }
 
-            Section("Claude 公式%を有効にする（任意）") {
-                if tokenConfigured {
-                    HStack {
-                        Label("公式トークン設定済み", systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                        Spacer()
-                        Button("削除") {
-                            ClaudeToken.delete()
-                            tokenConfigured = false
-                            usage.refresh()
-                        }
-                    }
-                    Text("Claudeゲージは公式%で表示中なのだ")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    SecureField("sk-ant-oat01-… を貼り付け", text: $tokenInput)
-                    Button("Keychainに保存") {
-                        if ClaudeToken.save(tokenInput) {
-                            tokenInput = ""
-                            tokenConfigured = true
-                            usage.refresh()
-                        }
-                    }
-                    .disabled(tokenInput.trimmingCharacters(in: .whitespaces).isEmpty)
-                    Text("ターミナルで claude setup-token を実行→ブラウザで承認→表示されたトークンをここへ。MacのKeychainに保存され、Anthropic公式APIへの問い合わせのみに使うのだ（他への送信・表示は一切なし）")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Claude ゲージの目安上限（公式トークン未設定時）") {
-                Stepper(value: $claudeBudget5hM, in: 1...100) {
-                    LabeledContent("5時間枠の目安", value: "\(claudeBudget5hM)M tok")
-                }
-                Stepper(value: $claudeBudget7dM, in: 10...2000, step: 10) {
-                    LabeledContent("7日枠の目安", value: "\(claudeBudget7dM)M tok")
-                }
-                Text("Claudeの公式上限%はこの環境では取得できないため、実測トークン÷この目安でゲージを描くのだ。Codexは公式%そのまま")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("サイレント時間帯") {
-                Toggle("指定時間帯はサウンドをミュート", isOn: $silentHours)
-                if silentHours {
-                    DatePicker("開始", selection: timeBinding("silentStartMinutes"),
-                               displayedComponents: .hourAndMinute)
-                    DatePicker("終了", selection: timeBinding("silentEndMinutes"),
-                               displayedComponents: .hourAndMinute)
-                    Text("この間はずんだもん音声も効果音も鳴らないのだ（ノッチの表示は動く）")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            Section("承認") {
-                Toggle("ノッチから承認（許可/拒否ボタン）", isOn: $notchApproval)
-                Text("OFFにすると今まで通りターミナル側で確認するのだ。\(Int(ApprovalCenter.autoReleaseSeconds))秒無応答でも自動でターミナルに戻るのだ")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("起動") {
-                Toggle("ログイン時に自動起動", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, on in
-                        do {
-                            if on {
-                                try SMAppService.mainApp.register()
-                            } else {
-                                try SMAppService.mainApp.unregister()
+                Section {
+                    if tokenConfigured {
+                        HStack {
+                            Label("公式トークン設定済み", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                            Spacer()
+                            Button("削除") {
+                                ClaudeToken.delete()
+                                tokenConfigured = false
+                                usage.refresh()
                             }
-                            loginItemError = ""
-                        } catch {
-                            loginItemError = "設定できなかったのだ: \(error.localizedDescription)"
-                            launchAtLogin = SMAppService.mainApp.status == .enabled
                         }
+                        caption("Claude ゲージを公式％で表示しています。")
+                    } else {
+                        SecureField("sk-ant-oat01-… を貼り付け", text: $tokenInput)
+                        Button("Keychain に保存") {
+                            if ClaudeToken.save(tokenInput) {
+                                tokenInput = ""
+                                tokenConfigured = true
+                                usage.refresh()
+                            }
+                        }
+                        .disabled(tokenInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                        caption("ターミナルで claude setup-token を実行し、ブラウザで承認して表示されたトークンを貼り付けてください。Mac の Keychain に保存され、Anthropic 公式 API への問い合わせにのみ使用します（外部への送信・表示は一切ありません）。")
                     }
-                if !loginItemError.isEmpty {
-                    Text(loginItemError).font(.caption).foregroundStyle(.red)
+                } header: { sectionHeader("Claude 公式％を有効にする（任意）", "key.fill") }
+
+                Section {
+                    Stepper(value: $claudeBudget5hM, in: 1...100) {
+                        LabeledContent("5時間枠の目安", value: "\(claudeBudget5hM)M tok")
+                    }
+                    Stepper(value: $claudeBudget7dM, in: 10...2000, step: 10) {
+                        LabeledContent("7日枠の目安", value: "\(claudeBudget7dM)M tok")
+                    }
+                    caption("この環境では Claude の公式上限％を取得できないため、実測トークンをこの目安で割ってゲージを描きます。Codex は公式％をそのまま表示します。")
+                } header: { sectionHeader("Claude ゲージの目安上限", "slider.horizontal.3") }
+
+                Section {
+                    Toggle("指定した時間帯はミュート", isOn: $silentHours)
+                    if silentHours {
+                        DatePicker("開始", selection: timeBinding("silentStartMinutes"),
+                                   displayedComponents: .hourAndMinute)
+                        DatePicker("終了", selection: timeBinding("silentEndMinutes"),
+                                   displayedComponents: .hourAndMinute)
+                        caption("この時間帯はずんだもん音声も効果音も鳴りません（ノッチの表示は動きます）。")
+                    }
+                } header: { sectionHeader("サイレント時間帯", "moon.fill") }
+
+                Section {
+                    Toggle("ノッチから承認（許可 / 拒否ボタン）", isOn: $notchApproval)
+                    caption("オフにすると、これまで通りターミナル側で確認します。\(Int(ApprovalCenter.autoReleaseSeconds))秒応答がないときも、自動でターミナルに戻ります。")
+                } header: { sectionHeader("承認", "checkmark.shield.fill") }
+
+                Section {
+                    Toggle("ログイン時に自動起動", isOn: $launchAtLogin)
+                        .onChange(of: launchAtLogin) { _, on in
+                            do {
+                                if on {
+                                    try SMAppService.mainApp.register()
+                                } else {
+                                    try SMAppService.mainApp.unregister()
+                                }
+                                loginItemError = ""
+                            } catch {
+                                loginItemError = "設定できませんでした：\(error.localizedDescription)"
+                                launchAtLogin = SMAppService.mainApp.status == .enabled
+                            }
+                        }
+                    if !loginItemError.isEmpty {
+                        Text(loginItemError).font(.caption).foregroundStyle(.red)
+                    }
+                } header: { sectionHeader("起動", "power") }
+
+                Section {
+                    LabeledContent("バージョン", value: "1.1")
+                    LabeledContent("対応エージェント", value: "Claude Code / Codex")
+                    caption("音声：VOICEVOX ずんだもん")
+                    caption("Claude Code hooks・Codex notify 経由でローカル完結。クラウドへの送信はありません。")
+                } header: { sectionHeader("情報", "info.circle.fill") }
+
+                Section {
+                    Button(role: .destructive) {
+                        NSApp.terminate(nil)
+                    } label: {
+                        Label("ずんだノッチを終了", systemImage: "power")
+                            .frame(maxWidth: .infinity)
+                    }
+                    caption("ノッチから完全に終了します。次回は Launchpad か「open -a ずんだノッチ」で起動できます。")
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .animation(.spring(response: 0.35, dampingFraction: 1.0), value: silentHours)
+            .animation(.spring(response: 0.35, dampingFraction: 1.0), value: tokenConfigured)
+        }
+        .frame(width: 460, height: 700)
+        .background(.background)
+    }
 
-            Section("情報") {
-                LabeledContent("バージョン", value: "0.5.2")
-                LabeledContent("対応エージェント", value: "Claude Code / Codex")
-                Text("音声: VOICEVOX:ずんだもん")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Claude Code hooks・Codex notify 経由でローカル完結。クラウド送信なし")
-                    .font(.caption).foregroundStyle(.secondary)
+    // MARK: - ヘッダー（枝豆アイコン＋アプリ名）
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 52, height: 52)
+                .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ずんだノッチ")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                Text("Claude Code と Codex を、ノッチで見守る。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 26)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.55, green: 0.72, blue: 0.33).opacity(0.16), .clear],
+                startPoint: .top, endPoint: .bottom
+            )
+        )
+    }
 
-            Section {
-                Button(role: .destructive) {
-                    NSApp.terminate(nil)
-                } label: {
-                    Label("ずんだノッチを終了", systemImage: "power")
-                        .frame(maxWidth: .infinity)
-                }
-                Text("ノッチから完全に退場するのだ。次はLaunchpadか「open -a ずんだノッチ」で復帰")
-                    .font(.caption).foregroundStyle(.secondary)
+    // MARK: - パーツ
+
+    private var betaBadge: some View {
+        Text("ベータ")
+            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.orange.gradient))
+    }
+
+    private func sectionHeader(_ title: String, _ symbol: String) -> some View {
+        Label(title, systemImage: symbol)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private func usageRows(_ s: UsageStats) -> some View {
+        if let p5 = s.claudeOfficial5hPct {
+            LabeledContent("Claude 5時間枠（公式）") {
+                Text("\(p5)%・残 \(UsageFormat.remain(s.claudeOfficial5hReset))")
+            }
+        } else {
+            LabeledContent("Claude 5時間枠") {
+                Text("\(TokenFormat.short(s.claude5hTokens)) tok 使用")
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 440, height: 640)
+        if let p7 = s.claudeOfficial7dPct {
+            LabeledContent("Claude 7日枠（公式）") {
+                Text("\(p7)%・残 \(UsageFormat.remain(s.claudeOfficial7dReset))")
+            }
+        } else {
+            LabeledContent("Claude 7日枠") {
+                Text("\(TokenFormat.short(s.claude7dTokens)) tok 使用")
+            }
+        }
+        if let pct = s.codex7dPct {
+            LabeledContent("Codex 7日枠（公式）") {
+                Text("\(pct)%・残 \(UsageFormat.remain(s.codex7dReset))")
+            }
+        }
+        if let pct = s.codex5hPct {
+            LabeledContent("Codex 5時間枠（公式）") {
+                Text("\(pct)%・残 \(UsageFormat.remain(s.codex5hReset))")
+            }
+        }
     }
 
     // 「HH:mm」⇔ 深夜0時からの分数（UserDefaults保存用）

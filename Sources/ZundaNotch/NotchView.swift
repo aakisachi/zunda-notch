@@ -14,7 +14,7 @@ struct NotchView: View {
     @AppStorage("notchApprovalEnabled") private var notchApproval = true
     @AppStorage("claudeBudget5hM") private var claudeBudget5hM = 15
     @AppStorage("claudeBudget7dM") private var claudeBudget7dM = 500
-    @AppStorage("showUsageStrip") private var showUsageStrip = true
+    @AppStorage("showUsageStrip") private var showUsageStrip = false
     @State private var glowOpacity: Double = 0
     @ObservedObject private var usage = UsageMonitor.shared
 
@@ -102,7 +102,7 @@ struct NotchView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(zundaVoice ? Color.green : Color.gray)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .help("ずんだもん音声")
 
                     Button {
@@ -112,7 +112,7 @@ struct NotchView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(notchApproval ? Color.orange : Color.gray)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .help("ノッチから承認")
 
                     Button(action: onOpenSettings) {
@@ -120,7 +120,7 @@ struct NotchView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Color.gray)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .help("設定")
                 }
                 .padding(.trailing, 16)
@@ -135,10 +135,10 @@ struct NotchView: View {
 
             if store.visibleSessions.isEmpty {
                 VStack(spacing: 4) {
-                    Text("セッションがまだ無いのだ")
+                    Text("セッションはまだありません")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.gray)
-                    Text("Claude Code か Codex を動かすとここに現れるのだ")
+                    Text("Claude Code か Codex を動かすと、ここに表示されます")
                         .font(.system(size: 10))
                         .foregroundStyle(.gray.opacity(0.7))
                 }
@@ -174,7 +174,7 @@ struct NotchView: View {
                             .frame(maxWidth: .infinity)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05)))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     .padding(.horizontal, 10)
                 }
             }
@@ -240,7 +240,7 @@ struct NotchView: View {
                         }
                     }
                     if s.codex5hPct == nil && s.codex7dPct == nil {
-                        Text("データなし（Codexを一度動かすと出るのだ）")
+                        Text("データなし（Codex を一度動かすと表示されます）")
                             .font(.system(size: 9)).foregroundStyle(.gray)
                     } else if s.codex5hPct == nil {
                         Text("5h枠なしプラン")
@@ -300,6 +300,15 @@ struct NotchView: View {
     }
 }
 
+// 押した瞬間にきゅっと縮むボタン（即時フィードバック＋スプリング）
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
 // MARK: - セッション行（本家流の3行構成）
 
 struct SessionRow: View {
@@ -308,6 +317,8 @@ struct SessionRow: View {
     let onDecide: (Bool) -> Void
     let onJump: () -> Void
 
+    @State private var hovering = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             // 1行目：● プロジェクト · タイトル   [Agent][Host][時間]
@@ -315,6 +326,8 @@ struct SessionRow: View {
                 Circle()
                     .fill(session.status.color)
                     .frame(width: 7, height: 7)
+                    .shadow(color: session.status == .working ? session.status.color.opacity(0.85) : .clear,
+                            radius: 3)
                 Text(titleLine)
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.white)
@@ -369,18 +382,18 @@ struct SessionRow: View {
                             .foregroundStyle(.black)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 3)
-                            .background(Capsule().fill(Color.green))
+                            .background(Capsule().fill(Color.green.gradient))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                     Button { onDecide(false) } label: {
                         Text("拒否")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 3)
-                            .background(Capsule().fill(Color.red.opacity(0.85)))
+                            .background(Capsule().fill(Color.red.opacity(0.85).gradient))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                 }
                 .padding(.top, 1)
             }
@@ -388,10 +401,19 @@ struct SessionRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 9)
-                .fill(pending != nil ? Color.orange.opacity(0.13) : Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(pending != nil
+                      ? Color.orange.opacity(0.13)
+                      : Color.white.opacity(hovering ? 0.12 : 0.055))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.white.opacity(hovering ? 0.10 : 0), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
+        .onHover { h in
+            withAnimation(.spring(response: 0.3, dampingFraction: 1.0)) { hovering = h }
+        }
         .onTapGesture(perform: onJump)
     }
 

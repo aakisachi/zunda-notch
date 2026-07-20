@@ -116,7 +116,7 @@ final class SessionStore: ObservableObject {
     func loadDummyData() {
         sessions = [
             AgentSession(id: "zn-dummy-1", agent: .claudeCode, projectName: "（デモ表示）claude_code",
-                         status: .working, lastMessage: "Claude Code を動かすと本物に置き換わるのだ",
+                         status: .working, lastMessage: "Claude Code を動かすと本物に置き換わります",
                          updatedAt: Date()),
         ]
     }
@@ -206,7 +206,7 @@ final class SessionStore: ObservableObject {
     func resolveApproval(sessionID: String, allowed: Bool) {
         guard let idx = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         sessions[idx].status = allowed ? .working : .idle
-        sessions[idx].lastMessage = allowed ? "許可したのだ → 実行中" : "拒否したのだ"
+        sessions[idx].lastMessage = allowed ? "許可しました → 実行中" : "拒否しました"
         sessions[idx].updatedAt = Date()
     }
 
