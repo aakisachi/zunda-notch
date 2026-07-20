@@ -16,12 +16,8 @@ enum FocusJumper {
             }
         }
         // Claude デスクトップのセッション。
-        // 注意: claude://resume?session=<CLIセッションID> は「インポート」であり、
-        // 既存のサイドバー項目とは別に無題の複製セッション（local_<CLI-ID>）を作ってしまう。
-        // 既存セッションを直接開ける claude://code/<bridgeSessionId> は
-        // フィーチャーフラグ(gate 2143883161)でOFFのため現状使えない（2026-07-20 実測）。
-        // → 代わりにアプリを前面化し、サイドバーの同名セッション行を
-        //    アクセシビリティAPIでクリックしてピンポイントで開く（門番不要・インポートしない）。
+        // アプリを前面化し、サイドバーの同名セッション行をアクセシビリティAPIで
+        // クリックして、その会話をピンポイントで開く。
         activateHostApp(session)
         if !session.title.isEmpty {
             ClaudeSidebar.openSession(titled: session.title)
