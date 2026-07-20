@@ -1,0 +1,15 @@
+# Swift / SwiftPM build artifacts
+.build/
+.swiftpm/
+*.xcodeproj
+
+# 配布ビルド（ソースから再生成するのでコミットしない）
+dist/
+
+# macOS
+.DS_Store
+
+# ローカル設定・秘密（万が一の混入防止）
+*.pem
+*.token
+secrets*
