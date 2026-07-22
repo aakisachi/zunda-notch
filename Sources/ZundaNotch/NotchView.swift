@@ -153,7 +153,8 @@ struct NotchView: View {
                                 session: session,
                                 pending: approval.pending[session.id],
                                 onDecide: { allow in onDecide(session.id, allow) },
-                                onJump: { FocusJumper.jump(to: session) }
+                                onJump: { FocusJumper.jump(to: session) },
+                                onHide: { withAnimation(.spring(response: 0.3, dampingFraction: 1)) { store.hide(id: session.id) } }
                             )
                         }
                     }
@@ -316,6 +317,7 @@ struct SessionRow: View {
     let pending: ApprovalCenter.Pending?
     let onDecide: (Bool) -> Void
     let onJump: () -> Void
+    let onHide: () -> Void
 
     @State private var hovering = false
 
@@ -410,6 +412,22 @@ struct SessionRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.white.opacity(hovering ? 0.10 : 0), lineWidth: 0.5)
         )
+        // 非表示ボタン（ホバー時に右上へふわっと出る）
+        .overlay(alignment: .topTrailing) {
+            if hovering {
+                Button(action: onHide) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(4)
+                        .background(Circle().fill(Color.black.opacity(0.55)))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .help("このセッションを隠す")
+                .offset(x: -4, y: 4)
+                .transition(.opacity)
+            }
+        }
         .contentShape(Rectangle())
         .onHover { h in
             withAnimation(.spring(response: 0.3, dampingFraction: 1.0)) { hovering = h }

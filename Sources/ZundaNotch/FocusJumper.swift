@@ -102,11 +102,13 @@ enum FocusJumper {
         default:
             break
         }
-        // Codex や行き先不明のCLIセッション → 起動中のターミナル/エディタを順に探す。
-        // Codex の notify は端末に紐付かず起動されるため tty も TERM_PROGRAM も取れない。
-        // そのため termProgram では判別できず、起動中のホストを総当たりで前面化する。
-        // ★VS Code / Cursor の内蔵ターミナルで Codex を動かすケースをここで拾う。
+        // Codex や行き先不明のCLIセッション → 起動中のホストを優先順で前面化する。
+        // Codex の notify は端末に紐付かず起動されるため tty も TERM_PROGRAM も取れず、
+        // termProgram では判別できない。そこで起動中のホストを総当たりする。
+        // ★あーさんは ChatGPT デスクトップアプリ（bundle: com.openai.codex）内で Codex を
+        //   動かすので最優先。CLI 実行用にターミナル/エディタも残す。
         if session.agent == .codex || session.tty != nil {
+            if activate(bundleID: "com.openai.codex") { return }   // ChatGPT / Codex デスクトップアプリ
             if activate(bundleID: "com.apple.Terminal") { return }
             if activate(bundleID: "com.googlecode.iterm2") { return }
             if activate(bundleID: "com.microsoft.VSCode") { return }

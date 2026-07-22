@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var approval: ApprovalCenter?
     private var server: EventServer?
     private var watcher: TranscriptWatcher?
+    private var codexWatcher: CodexWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let store = SessionStore()
@@ -51,25 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Codex CLI の notify（agent-turn-complete）
+        // Codex（ChatGPT アプリ）の notify（agent-turn-complete）。
+        // セッションの検知・表示は CodexWatcher（~/.codex/sessions 監視）に一本化し、
+        // ここでは即時に最新状態を反映して、ポップ＋音声だけ担当する。
         server.onCodex = { [weak self] obj in
             Task { @MainActor in
-                guard let self, let store = self.store else { return }
+                guard let self else { return }
                 guard (obj["type"] as? String) == "agent-turn-complete" else { return }
-                let threadID = (obj["thread-id"] as? String) ?? "codex-\(UUID().uuidString.prefix(8))"
-                let effect = store.applyCodex(
-                    threadID: threadID,
-                    cwd: obj["cwd"] as? String,
-                    lastMessage: obj["last-assistant-message"] as? String,
-                    tty: obj["_tty"] as? String,
-                    termProgram: obj["_term"] as? String
-                )
-                if case .pop(let voiceLine) = effect {
-                    self.notchController?.popNotify()
-                    if let voiceLine {
-                        VoiceVox.notify(voiceLine, sound: "Pop")
-                    }
-                }
+                self.codexWatcher?.tickNow()
+                self.notchController?.popNotify()
+                VoiceVox.notify("コデックス、できたのだ！", sound: "Pop")
             }
         }
 
@@ -91,5 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let watcher = TranscriptWatcher(store: store)
         watcher.start()
         self.watcher = watcher
+
+        let codexWatcher = CodexWatcher(store: store)
+        codexWatcher.start()
+        self.codexWatcher = codexWatcher
     }
 }

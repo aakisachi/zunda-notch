@@ -7,13 +7,13 @@ import SwiftUI
 final class SettingsWindowController {
     private var window: NSWindow?
 
-    func open() {
+    func open(store: SessionStore) {
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate()
             return
         }
-        let view = SettingsView()
+        let view = SettingsView(store: store)
         let hosting = NSHostingController(rootView: view)
         let w = NSWindow(contentViewController: hosting)
         w.title = "ずんだノッチ設定"
@@ -44,6 +44,7 @@ struct SettingsView: View {
     @State private var tokenInput = ""
     @State private var tokenConfigured = ClaudeToken.isConfigured
     @ObservedObject private var usage = UsageMonitor.shared
+    @ObservedObject var store: SessionStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -127,6 +128,14 @@ struct SettingsView: View {
                     Toggle("ノッチから承認（許可 / 拒否ボタン）", isOn: $notchApproval)
                     caption("オフにすると、これまで通りターミナル側で確認します。\(Int(ApprovalCenter.autoReleaseSeconds))秒応答がないときも、自動でターミナルに戻ります。")
                 } header: { sectionHeader("承認", "checkmark.shield.fill") }
+
+                Section {
+                    Button("非表示にしたセッションを元に戻す") { store.unhideAll() }
+                        .disabled(store.hiddenIDs.isEmpty)
+                    caption(store.hiddenIDs.isEmpty
+                            ? "セッション行の × ボタンで、そのセッションをノッチから隠せます。"
+                            : "現在 \(store.hiddenIDs.count) 件を非表示にしています。")
+                } header: { sectionHeader("表示", "eye.slash.fill") }
 
                 Section {
                     Toggle("ログイン時に自動起動", isOn: $launchAtLogin)

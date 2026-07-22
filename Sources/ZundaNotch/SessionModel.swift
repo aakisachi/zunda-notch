@@ -102,9 +102,25 @@ struct WatcherSession {
 final class SessionStore: ObservableObject {
     @Published var sessions: [AgentSession] = []
 
-    // ノッチに表示する分だけ（グレー丸＝待機/確認済みは隠す）
+    // ユーザーが手動で非表示にしたセッションID（永続化）
+    @Published private(set) var hiddenIDs: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: "hiddenSessionIDs") ?? [])
+
+    // ノッチに表示する分だけ（グレー丸＝待機/確認済み、および手動で隠したものは除外）
     var visibleSessions: [AgentSession] {
-        sessions.filter { $0.status != .idle }
+        sessions.filter { $0.status != .idle && !hiddenIDs.contains($0.id) }
+    }
+
+    // セッションを手動で非表示にする（×ボタン）
+    func hide(id: String) {
+        hiddenIDs.insert(id)
+        UserDefaults.standard.set(Array(hiddenIDs), forKey: "hiddenSessionIDs")
+    }
+
+    // 非表示をすべて解除
+    func unhideAll() {
+        hiddenIDs.removeAll()
+        UserDefaults.standard.set([String](), forKey: "hiddenSessionIDs")
     }
 
     // ノッチのバッジ用：対応が必要なセッション数（承認待ち＋完了=確認待ち）
@@ -208,34 +224,6 @@ final class SessionStore: ObservableObject {
         sessions[idx].status = allowed ? .working : .idle
         sessions[idx].lastMessage = allowed ? "許可しました → 実行中" : "拒否しました"
         sessions[idx].updatedAt = Date()
-    }
-
-    // Codex CLI（agent-turn-complete）
-    func applyCodex(threadID: String, cwd: String?, lastMessage: String?,
-                    tty: String? = nil, termProgram: String? = nil) -> EventEffect {
-        sessions.removeAll { $0.id.hasPrefix("zn-dummy-") }
-        let name = Self.projectName(from: cwd)
-        let reply = Self.short(lastMessage ?? "ターン完了", limit: 80)
-        let cleanTTY = (tty == "??" || tty?.isEmpty == true) ? nil : tty
-        if let idx = sessions.firstIndex(where: { $0.id == threadID }) {
-            sessions[idx].status = .done
-            sessions[idx].lastMessage = reply
-            sessions[idx].lastReply = reply
-            sessions[idx].updatedAt = Date()
-            if let cleanTTY { sessions[idx].tty = cleanTTY }
-            if let termProgram, !termProgram.isEmpty { sessions[idx].termProgram = termProgram }
-        } else {
-            var s = AgentSession(
-                id: threadID, agent: .codex, projectName: name,
-                status: .done, lastMessage: reply,
-                updatedAt: Date(), cwd: cwd, tty: cleanTTY, termProgram: termProgram
-            )
-            s.title = "Codex ターン"
-            s.lastReply = reply
-            sessions.append(s)
-        }
-        resort()
-        return .pop(voiceLine: "コデックス、できたのだ！")
     }
 
     private func resort() {
@@ -343,6 +331,40 @@ final class SessionStore: ObservableObject {
             )
             mutate(&s)
             sessions.append(s)
+        }
+        resort()
+    }
+
+    // CodexWatcher（~/.codex/sessions 由来）の結果を反映。Codexセッションはこれを正とする。
+    func applyCodexWatcher(_ found: [CodexWatcherSession]) {
+        sessions.removeAll { $0.id.hasPrefix("zn-dummy-") }
+        let foundIDs = Set(found.map { $0.sessionID })
+        // 見つからなくなった（古くなった）Codexセッションは除去。notify由来の一時IDも掃除。
+        sessions.removeAll { $0.agent == .codex && !foundIDs.contains($0.id) }
+
+        for w in found {
+            let name = Self.projectName(from: w.cwd)
+            let reply = w.lastAssistant.map { Self.short($0, limit: 80) } ?? ""
+            let userP = w.lastUser.map { Self.short($0, limit: 80) } ?? ""
+            let status: SessionStatus = w.working ? .working : .done
+            if let idx = sessions.firstIndex(where: { $0.id == w.sessionID }) {
+                sessions[idx].status = status
+                sessions[idx].projectName = name
+                if !reply.isEmpty { sessions[idx].lastReply = reply; sessions[idx].lastMessage = reply }
+                if !userP.isEmpty { sessions[idx].lastUserPrompt = userP }
+                sessions[idx].updatedAt = w.mtime
+                sessions[idx].cwd = w.cwd
+                if sessions[idx].title.isEmpty { sessions[idx].title = name }
+            } else {
+                var s = AgentSession(
+                    id: w.sessionID, agent: .codex, projectName: name,
+                    status: status, lastMessage: reply, updatedAt: w.mtime, cwd: w.cwd
+                )
+                s.title = name
+                s.lastReply = reply
+                s.lastUserPrompt = userP
+                sessions.append(s)
+            }
         }
         resort()
     }

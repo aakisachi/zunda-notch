@@ -99,7 +99,7 @@ final class NotchController {
         isHovering = false
         collapseTask?.cancel()
         collapse()
-        settings.open()
+        settings.open(store: store)
     }
 
     private func decide(sessionID: String, allow: Bool) {
