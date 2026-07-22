@@ -102,12 +102,18 @@ enum FocusJumper {
         default:
             break
         }
-        // Codex や行き先不明のCLIセッション → 起動中のターミナルを順に探す
+        // Codex や行き先不明のCLIセッション → 起動中のターミナル/エディタを順に探す。
+        // Codex の notify は端末に紐付かず起動されるため tty も TERM_PROGRAM も取れない。
+        // そのため termProgram では判別できず、起動中のホストを総当たりで前面化する。
+        // ★VS Code / Cursor の内蔵ターミナルで Codex を動かすケースをここで拾う。
         if session.agent == .codex || session.tty != nil {
             if activate(bundleID: "com.apple.Terminal") { return }
             if activate(bundleID: "com.googlecode.iterm2") { return }
+            if activate(bundleID: "com.microsoft.VSCode") { return }
+            if activate(name: "Cursor") { return }
             if activate(name: "Ghostty") { return }
             if activate(name: "Warp") { return }
+            if activate(name: "WezTerm") { return }
         }
         // Claude Code デスクトップアプリ（tty無しセッション）
         if activate(name: "Claude") { return }
