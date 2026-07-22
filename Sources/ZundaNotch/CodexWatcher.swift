@@ -77,27 +77,40 @@ final class CodexWatcher {
                 .replacingOccurrences(of: ".jsonl", with: "")
                 .components(separatedBy: "-").suffix(5).joined(separator: "-")
 
-            // 末尾から状態と直近メッセージ
+            // 末尾から状態と直近メッセージ。
+            // 長いターンでは task_started が末尾24KBより前に流れ、tail には
+            // token_count / response_item しか残らない。そのためタスクマーカーだけでは
+            // 稼働中を判定できない → 「直近の書き込みが新しいか(mtime)」を主軸にする。
             let tailStr = tail(path, maxBytes: 24576)
-            var working = false
+            var lastStarted = -1
+            var lastComplete = -1
             var lastUser: String?
             var lastAssistant: String?
+            var idx = 0
             for lineSub in tailStr.split(separator: "\n") {
+                idx += 1
                 guard let data = String(lineSub).data(using: .utf8),
                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       obj["type"] as? String == "event_msg",
                       let p = obj["payload"] as? [String: Any],
                       let t = p["type"] as? String else { continue }
                 switch t {
-                case "task_started": working = true
-                case "task_complete": working = false
+                case "task_started": lastStarted = idx
+                case "task_complete": lastComplete = idx
                 case "user_message": lastUser = (p["message"] as? String) ?? lastUser
                 case "agent_message": lastAssistant = (p["message"] as? String) ?? lastAssistant
                 default: break
                 }
             }
-            // mtime が古ければ実行中扱いにしない（記録が止まっているだけ）
-            if now.timeIntervalSince(mtime) > 120 { working = false }
+            let elapsed = now.timeIntervalSince(mtime)
+            let working: Bool
+            if lastComplete > lastStarted {
+                working = false                 // 直近マーカーが task_complete＝ターン完了
+            } else if lastStarted > lastComplete {
+                working = elapsed < 90           // task_started 後・未完了（停止して久しければ完了扱い）
+            } else {
+                working = elapsed < 60           // マーカーが tail に無い長ターン → 書き込みが新しければ稼働中
+            }
 
             out.append(CodexWatcherSession(
                 sessionID: sid, cwd: cwd,
